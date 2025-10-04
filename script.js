@@ -19,9 +19,7 @@ function secondsToMinutesSeconds(seconds) {
 
 async function getSongs(folder) {
   currFolder = folder;
-  // Use a relative path so the fetch is resolved relative to the page
-  // (avoids requesting from the server root which caused the 404)
-  let a = await fetch(`${folder}/`);
+  let a = await fetch(`/${folder}/`);
   console.log("A", a);
   console.log("Fetching songs from", folder);
   let response = await a.text();
@@ -33,26 +31,9 @@ async function getSongs(folder) {
   for (let index = 0; index < as.length; index++) {
     const element = as[index];
     console.log("element", element);
-    // Some servers (or the live preview) return directory links using
-    // backslashes or percent-encoded backslashes (%5C). To handle those
-    // reliably, read the raw href attribute, decode it, normalize
-    // backslashes to forward slashes, then pick the basename.
-    let rawHref = element.getAttribute("href") || element.href;
-    if (!rawHref) continue;
-    try {
-      rawHref = decodeURIComponent(rawHref);
-    } catch (e) {
-      // ignore decode errors and use raw value
-    }
-    const normalized = rawHref.replace(/\\/g, "/").replace(/\\/g, "/").replace(/\\\\/g, "/").replace(/\\/g, "/").replace(/\"/g, '"');
-    // also replace any remaining backslashes
-    const finalPath = normalized.replace(/\\/g, "/");
-    // skip directories and parent links
-    if (finalPath === "../" || finalPath === "./" || finalPath.endsWith("/")) continue;
-    if (finalPath.toLowerCase().endsWith(".mp3")) {
-      const filename = finalPath.split("/").pop();
-      songs.push(filename);
-      console.log("Found song", filename);
+    if (element.href.endsWith(".mp3")) {
+      songs.push(element.href.split(`/${folder}/`)[1]);
+      console.log("Found song", element.href.split(`/${folder}/`)[1]);
     }
   }
 
@@ -62,12 +43,12 @@ async function getSongs(folder) {
     .getElementsByTagName("ul")[0];
   songUL.innerHTML = "";
   for (const song of songs) {
-    console.log("Song", song);
     songUL.innerHTML =
       songUL.innerHTML +
       `<li><img class="invert" width="34" src="img/music.svg" alt="">
                             <div class="info">
                                 <div> ${song.replaceAll("%20", " ")}</div>
+                                <div>Harry</div>
                             </div>
                             <div class="playnow">
                                 <span>Play Now</span>
@@ -88,8 +69,7 @@ async function getSongs(folder) {
 }
 
 const playMusic = (track, pause = false) => {
-  // Use relative media src so audio file is resolved relative to the page
-  currentSong.src = `${currFolder}/` + track;
+  currentSong.src = `/${currFolder}/` + track;
   if (!pause) {
     currentSong.play();
     play.src = "img/pause.svg";
@@ -100,8 +80,7 @@ const playMusic = (track, pause = false) => {
 
 async function displayAlbums() {
   console.log("displaying albums");
-  // Fetch the songs folder relative to the page (no leading slash)
-  let a = await fetch(`songs/`);
+  let a = await fetch(`/songs/`);
   let response = await a.text();
   let div = document.createElement("div");
   div.innerHTML = response;
@@ -110,58 +89,22 @@ async function displayAlbums() {
   let array = Array.from(anchors);
   for (let index = 0; index < array.length; index++) {
     const e = array[index];
-    // Read raw href and normalize it so listings with backslashes or
-    // percent-encoded backslashes are handled correctly.
-    let rawHref = e.getAttribute("href") || e.href;
-    if (!rawHref) continue;
-    try {
-      rawHref = decodeURIComponent(rawHref);
-    } catch (err) {
-      // ignore
-    }
-    let normalized = rawHref.replace(/\\/g, "/");
-    // If it's an absolute URL, use the pathname part only
-    try {
-      const u = new URL(normalized, window.location.href);
-      normalized = u.pathname;
-    } catch (err) {
-      // ignore and use normalized as-is
-    }
-    // Skip parent links and files (we only want folders inside songs)
+    console.log("Anchor", e.href);
     if (
-      normalized === "../" ||
-      normalized === "./" ||
-      normalized.endsWith(".jpg") ||
-      normalized.endsWith(".mp3") ||
-      normalized.toLowerCase().endsWith("info.json")
-    )
-      continue;
+      e.href.includes("/songs") &&
+      !e.href.endsWith("/songs") &&
+      !e.href.includes(".htaccess")
+    ) {
+      let folder = e.href.split("/").slice(-1)[0];
 
-    const parts = normalized.split("/").filter(Boolean);
-    const songsIndex = parts.lastIndexOf("songs");
-    if (songsIndex === -1) continue;
-    const folder = parts[songsIndex + 1];
-    if (!folder) continue;
-    if (folder.includes(".htaccess")) continue;
-
-    console.log("Folder", folder);
-    // Get the metadata of the folder (relative)
-    let metaResp;
-    try {
-      metaResp = await fetch(`songs/${folder}/info.json`);
-      if (!metaResp.ok) {
-        console.warn(`info.json not found for folder ${folder}:`, metaResp.status);
-        continue;
-      }
-    } catch (err) {
-      console.warn(`Failed fetching info.json for ${folder}:`, err);
-      continue;
-    }
-    let response = await metaResp.json();
-    console.log("Folder", folder, response);
-    cardContainer.innerHTML =
-      cardContainer.innerHTML +
-      ` <div data-folder="${folder}" class="card">
+      console.log("Folder", folder);
+      // Get the metadata of the folder
+      let a = await fetch(`/songs/${folder}/info.json`);
+      let response = await a.json();
+      console.log("Folder", folder, response);
+      cardContainer.innerHTML =
+        cardContainer.innerHTML +
+        ` <div data-folder="${folder}" class="card">
             <div class="play">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                     xmlns="http://www.w3.org/2000/svg">
@@ -170,10 +113,11 @@ async function displayAlbums() {
                 </svg>
             </div>
 
-      <img src="songs/${folder}/cover.jpg" alt="">
+            <img src="/songs/${folder}/cover.jpg" alt="">
             <h2>${response.title}</h2>
             <p>${response.description}</p>
-    </div>`;
+        </div>`;
+    }
   }
 
   // Load the playlist whenever card is clicked
